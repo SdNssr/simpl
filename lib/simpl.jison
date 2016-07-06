@@ -113,9 +113,20 @@ atom
         {$$ = ast.createListNode($2);}
     ;
 
+slice
+    : e ':' e
+        {$$ = ast.createSliceNode($1, $3);}
+    | ':' e
+        {$$ = ast.createSliceNode(undefined, $2);}
+    | e ':'
+        {$$ = ast.createSliceNode($1, undefined);}
+    ;
+
 postfix_e
     : atom
-    | postfix_e '[' e ']'
+    | postfix_e '[' explist ']'
+        {$$ = ast.createIndexNode($1, $3);}
+    | postfix_e '[' slice ']'
         {$$ = ast.createIndexNode($1, $3);}
     | postfix_e '(' explist ')'
         {$$ = ast.createFuncCallNode($1, $3);}
