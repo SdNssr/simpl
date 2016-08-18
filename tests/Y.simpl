@@ -1,0 +1,7 @@
+def y (le) {
+    return ( def (f) {
+        return f(f)
+    } ) (def (f) {
+        return le( def (x) { return (f(f)) (x) } )
+    })
+}

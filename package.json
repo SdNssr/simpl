@@ -20,5 +20,11 @@
   "bugs": {
     "url": "https://github.com/SdNssr/simpl/issues"
   },
-  "homepage": "https://github.com/SdNssr/simpl#readme"
+  "homepage": "https://github.com/SdNssr/simpl#readme",
+  "dependencies": {
+    "escodegen": "^1.8.0"
+  },
+  "devDependencies": {
+    "prettyjson": "^1.1.3"
+  }
 }

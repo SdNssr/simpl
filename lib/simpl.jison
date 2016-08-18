@@ -28,12 +28,7 @@
 
 %%
 [ \t]+                 /* skip whitespace */
-[\n]                   return 'NEWLINE';
-
-/* Generic tokens */
-[0-9]+("."[0-9]+)?\b   return 'NUMBER';
-"\"".+"\""             return 'STRING';
-[a-zA-Z_][a-zA-Z0-9_]* return 'IDENTIFIER';
+[\n]+                  return 'NEWLINE';
 
 /* Delimiters */
 "{"                    return '{';
@@ -45,6 +40,14 @@
 ":"                    return ':';
 ";"                    return ';';
 ","                    return ',';
+
+/* Comparison */
+"=="                   return '==';
+"!="                   return '!=';
+"<="                   return '<=';
+">="                   return '>=';
+"<"                    return '<';
+">"                    return '>';
 
 /* Operators */
 "*"                    return '*';
@@ -59,32 +62,35 @@
 "="                    return '=';
 "."                    return '.';
 
-/* Comparison */
-"=="                   return '==';
-"!="                   return '!=';
-"<="                   return '<=';
-">="                   return '>=';
-"<"                    return '<';
-">"                    return '>';
-
 /* Keywords */
 "=>"                   return '=>';
 "if"                   return 'if';
+"elif"                 return 'elif';
 "else"                 return 'else';
 "def"                  return 'def';
 "return"               return 'return';
 "and"                  return 'and';
 "not"                  return 'not';
 "or"                   return 'or';
+"in"                   return 'in';
 
 <<EOF>>               return 'EOF';
 
+/* Generic tokens */
+[0-9]+("."[0-9]+)?\b   return 'NUMBER';
+"\"".+"\""             return 'STRING';
+[a-zA-Z_][a-zA-Z0-9_]* return 'IDENTIFIER';
+
 /lex
 
+%left LAMDBA
+%left CONDEXP
 %left ','
+%left 'or'
+%left 'and'
+%left UBINNEGATE
+%left '>' '<' '>=' '<=' '==' '!=' '==' '!=' 'in' NOTIN
 %left '&' '|'
-%left '==' '!='
-%left '>' '<' '>=' '<='
 %left '+' '-'
 %left '*' '/' '%'
 %left '^'
@@ -96,7 +102,11 @@
 %% /* language grammar */
 
 expressions
-    : program EOF
+/*
+    : suite_inner EOF
+        {return ast.createProgramNode($1);}
+*/
+    : e NEWLINE EOF
         {return $1;}
     ;
 
@@ -163,32 +173,38 @@ e
         {$$ = ast.createBinopNode($1, '%', $3);}
     | e '^' e
         {$$ = ast.createBinopNode($1, '^', $3);}
+    | e 'and' e
+        {$$ = ast.createBinopNode($1, 'and', $3);}
+    | e 'or' e
+        {$$ = ast.createBinopNode($1, 'or', $3);}
+    | e 'in' e
+        {$$ = ast.createBinopNode($1, 'in', $3);}
+    | 'not' e %prec UBINNEGATE
+        {$$ = ast.createUnopNode('not', $2);}
     | '!' e %prec UNEGATE
         {$$ = ast.createUnopNode('!', $2);}
     | '-' e %prec UMINUS
         {$$ = ast.createUnopNode('-', $2);}
+    | 'def' '(' paramlist ')' suite %prec LAMDBA
+        {$$ = ast.createLambdaNode($3, $5);}
     ;
 
 explist
     : e
-        {$$ = ast.createExpListNode($1);}
+        {$$ = [$1];}
     | explist ',' e
-        {$$ = ast.updateExpListNode($1, $3);}
+        {$$ = $1; $$.push($3);}
     | %empty
-        {$$ = ast.createEmptyExpListNode();}
+        {$$ = [];}
     ;
 
-target_list
-    : target
-    | target ',' target
-    ;
-
-target
+paramlist
     : IDENTIFIER
-    | '(' target_list ')'
-    | '[' target_list ']'
-    | e '.' IDENTIFIER
-    | e '[' e ']'
+        {$$ = [$1];}
+    | paramlist ',' IDENTIFIER
+        {$$ = $1; $$.push($3);}
+    | %empty
+        {$$ = [];}
     ;
 
 simple_statement
@@ -208,46 +224,37 @@ simple_statement
         {$$ = ast.createAssignmentStatement($1, $3);}
     ;
 
-suite_single
+suite_inner
     : simple_statement
-        {$$ = ast.createStatementListNode($1);}
-    | suite_single ';' single_statement
-        {$$ = ast.updateStatementListNode($1, $3);}
-    ;
-
-suite_multiple
-    : simple_statement
-        {$$ = ast.createStatementListNode($1);}
-    | suite_multiple ';' single_statement
-        {$$ = ast.updateStatementListNode($1, $3);}
-    | suite_multiple NEWLINE single_statement
-        {$$ = ast.updateStatementListNode($1, $3);}
+        {$$ = [$1];}
+    | suite_inner ';' simple_statement
+        {$$ = $1; $$.push($3);}
+    | suite_inner NEWLINE simple_statement
+        {$$ = $1; $$.push($3);}
+    | compound_statement
+        {$$ = [$1];}
+    | suite_inner NEWLINE compound_statement
+        {$$ = $1; $$.push($3);}
     ;
 
 suite
-    : suite_single
-        {$$ = $1;}
-    | '{' suite_multiple '}'
+    : '{' suite_inner '}'
         {$$ = $2;}
     ;
 
 if_statement
     : 'if' e suite
+        {$$ = ast.createIfNode($3, $2);}
     | if_statement 'elif' e suite
+        {$$ = ast.updateIfNode($4, $3, $1);}
     ;
 
 compound_statement
-    : 'for' exprlist 'in' exprlist suite
-    | 'def' IDENTIFIER '(' explist ')' suite
-    | if_statement
-    | if_statement 'else' suite
-    ;
-
-program
-    : simple_statement
-        {$$ = ast.createStatementListNode($1);}
-    | program ';' simple_statement
-        {$$ = ast.updateStatementListNode($1, $3);}
-    | program NEWLINE simple_statement
-        {$$ = ast.updateStatementListNode($1, $3);}
+    : if_statement
+    | 'while' e suite
+        {$$ = ast.createWhileNode($2, $3);}
+    | 'for' explist ':' explist suite
+        {$$ = ast.createForNode($2, $4, $5);}
+    | 'def' IDENTIFIER '(' paramlist ')' suite
+        {$$ = ast.createFunctionNode($2, $4, $6);}
     ;
